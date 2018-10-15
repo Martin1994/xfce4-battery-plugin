@@ -649,12 +649,14 @@ battmon.c:241: for each function it appears in.)
 
     color_str = gdk_rgba_to_string (color);
 #if GTK_CHECK_VERSION (3, 20, 0)
-    gchar * cssminsizes = "min-width: 4px; min-height: 0px";
-    if (gtk_orientable_get_orientation(GTK_ORIENTABLE(battmon->battstatus)) == GTK_ORIENTATION_HORIZONTAL)
-        cssminsizes = "min-width: 0px; min-height: 4px";
+    gchar * cssminsizes = "min-width: 2px; min-height: 8px;";
+    // if (gtk_orientable_get_orientation(GTK_ORIENTABLE(battmon->battstatus)) == GTK_ORIENTATION_HORIZONTAL)
+    //     cssminsizes = "min-width: 0px; min-height: 4px;";
     css = g_strdup_printf("progressbar trough { %s } \
-                                   progressbar progress { %s ; \
-                                                         background-color: %s; background-image: none; }",
+                            progressbar progress { %s \
+                                border-style: none; \
+                                background-color: %s; background-image: none; \
+                            }",
                                  cssminsizes, cssminsizes,
 #else
     css = g_strdup_printf(".progressbar progress { background-color: %s; background-image: none; }",
@@ -720,10 +722,10 @@ static void setup_battmon(t_battmon *battmon)
     battmon->battstatus = gtk_progress_bar_new();
 
     gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(battmon->battstatus), 0.0);
-    gtk_orientable_set_orientation(GTK_ORIENTABLE(battmon->battstatus),
-                                   !xfce_panel_plugin_get_orientation(battmon->plugin));
-    gtk_progress_bar_set_inverted(GTK_PROGRESS_BAR(battmon->battstatus),
-                                  (xfce_panel_plugin_get_orientation(battmon->plugin) == GTK_ORIENTATION_HORIZONTAL));
+    // gtk_orientable_set_orientation(GTK_ORIENTABLE(battmon->battstatus),
+    //                                !xfce_panel_plugin_get_orientation(battmon->plugin));
+    // gtk_progress_bar_set_inverted(GTK_PROGRESS_BAR(battmon->battstatus),
+    //                               (xfce_panel_plugin_get_orientation(battmon->plugin) == GTK_ORIENTATION_HORIZONTAL));
 
     battmon->css_provider = gtk_css_provider_new();
     gtk_style_context_add_provider(
@@ -1017,7 +1019,8 @@ battmon_set_size(XfcePanelPlugin *plugin, int size, t_battmon *battmon)
                                 -1, size);
         /* size of the progressbar */
         gtk_widget_set_size_request(GTK_WIDGET(battmon->battstatus),
-                8, -1);
+                22, -1);
+        gtk_widget_set_valign(GTK_WIDGET(battmon->battstatus), GTK_ALIGN_CENTER);
     }
     else
     {
