@@ -35,6 +35,9 @@
 #define APMDEVICE "/dev/apm"
 #elif __linux__
 #include <libapm.h>
+#define SYSFS_BAT_PRESENT "/sys/class/power_supply/battery/present"
+#define SYSFS_BAT_CAPACITY "/sys/class/power_supply/battery/capacity"
+#define SYSFS_BAT_STATUS "/sys/class/power_supply/battery/status"
 #endif
 
 #include <sys/stat.h>
@@ -131,7 +134,7 @@ typedef struct
 } t_battmon_dialog;
 
 enum {BM_DO_NOTHING, BM_MESSAGE, BM_COMMAND, BM_COMMAND_TERM};
-enum {BM_BROKEN, BM_USE_ACPI, BM_USE_APM};
+enum {BM_BROKEN, BM_USE_ACPI, BM_USE_APM, BM_USE_SYSFS};
 enum {BM_MISSING, BM_CRITICAL, BM_CRITICAL_CHARGING, BM_LOW, BM_LOW_CHARGING, BM_OK, BM_OK_CHARGING, BM_FULL, BM_FULL_CHARGING};
 
 static gboolean battmon_set_size(XfcePanelPlugin *plugin, int size, t_battmon *battmon);
@@ -157,6 +160,23 @@ init_options(t_battmon_options *options)
     gdk_rgba_parse(&(options->colorH), HIGH_COLOR);
     gdk_rgba_parse(&(options->colorL), LOW_COLOR);
     gdk_rgba_parse(&(options->colorC), CRITICAL_COLOR);
+}
+
+static int
+check_sysfs()
+{
+    FILE* file;
+    if (file = fopen(SYSFS_BAT_PRESENT, "r")) {
+        char buffer;
+        if (fread(&buffer, sizeof(char), 1, file)) {
+            fclose(file);
+            return buffer == '1' ? 0 : -1;
+        } else {
+            return -1;
+        }
+    } else {
+        return -1;
+    }
 }
 
 gboolean
@@ -245,11 +265,17 @@ detect_battery_info(t_battmon *battmon)
            apm.battery_percentage=acpistate->percentage;
            apm.battery_time=acpistate->rtime;
         }
-    return TRUE;
+        if (apm.battery_percentage > 0) {
+            return TRUE;
+        }
     }
     if(apm_read(&apm) == 0) {
         /* ACPI not detected, but APM works */
         battmon->method = BM_USE_APM;
+        return TRUE;
+    }
+    if (check_sysfs() == 0) {
+        battmon->method = BM_USE_SYSFS;
         return TRUE;
     }
 
@@ -394,13 +420,34 @@ update_apm_status(t_battmon *battmon)
 
     }
 #ifdef __linux__
-    else {
+    else if (battmon->method == BM_USE_APM) {
         DBG ("Trying apm_read()...");
-        apm_read(&apm);    /* not broken and not using ACPI, assume APM */
+        apm_read(&apm);
         charge = apm.battery_percentage;
         time_remaining = apm.battery_time;
         acline = apm.ac_line_status ? TRUE : FALSE;
 
+    }
+    else if (battmon->method == BM_USE_SYSFS) {
+        DBG ("Trying sysfs...");
+        char buffer[256];
+        FILE* file;
+        if (file = fopen(SYSFS_BAT_CAPACITY, "r")) {
+            if (fread(buffer, sizeof(char), sizeof(buffer), file)) {
+                charge = atoi(buffer);
+            }
+            fclose(file);
+        }
+        time_remaining = 0;
+        if (file = fopen(SYSFS_BAT_STATUS, "r")) {
+            int len = fread(buffer, sizeof(char), sizeof(buffer), file);
+            fclose(file);
+            buffer[len] = '\0';
+            acline = strcmp(buffer, "Charging\n") == 0 || strcmp(buffer, "Not charging\n") == 0;
+        }
+        g_source_remove(battmon->timeoutid);
+        battmon->timeoutid = g_timeout_add(10 * 1024,
+                (GSourceFunc) update_apm_status, battmon);
     }
 #elif __FreeBSD__
     else {
